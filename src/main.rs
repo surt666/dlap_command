@@ -105,24 +105,33 @@ async fn handler(e: ApiGatewayV2httpRequest, _c: Context) -> Result<EntityOutput
     let ae: ActionEvent = serde_json::from_str(&e.body.unwrap())?;
     match ae.action {
         Actions::CreateDataset(mut ds) => {
-            ds.created = now_as_secs();
-            ds.pk = format!("D#{:x}", Uuid::new_v4());
+            ds.created = Some(now_as_secs());
+            ds.pk = Some(format!("D#{}", ds.name));
             ds.sk = ds.pk.clone();
-	    ds.gsi1_pk = "dataset".to_string();
+	    ds.gsi1_pk = Some("dataset".to_string());
 	    ds.gsi1_sk = ds.pk.clone();
-            ds.r#type = Types::Dataset;
+            ds.r#type = Some(Types::Dataset);
             let item: DdbMap = serde_dynamodb::to_hashmap(&ds).unwrap();
 	    let cleaned_item = clean_item(item);
             println!("DDB Item {:#?}", cleaned_item);
             let res = ddb_util::put_item(&client, RELATIONS_TABLE, cleaned_item).await;
             println!("{:#?}", res);
        	    let mut res = HashMap::new();  // MOVE TO generate_lambda_output
-	    res.insert("pk".to_string(), ds.pk);
-            Ok(generate_lambda_output(res, 200))
+	    match ds.pk {
+		Some(x) => {
+		    res.insert("pk".to_string(), x);
+		    Ok(generate_lambda_output(res, 200))
+		},
+		None => {
+		    res.insert("status".to_string(), "pk is unset".to_string());
+		    Ok(generate_lambda_output(res, 500))
+		}
+	    }
+            
         },
 	Actions::CreateUser(mut user) => {
             user.created = now_as_secs();
-            user.pk = format!("U#{:x}", Uuid::new_v4());
+            user.pk = format!("U#{}", user.name);
             user.sk = user.pk.clone();
 	    user.gsi1_pk = "user".to_string();
 	    user.gsi1_sk = user.pk.clone();
@@ -156,7 +165,7 @@ async fn handler(e: ApiGatewayV2httpRequest, _c: Context) -> Result<EntityOutput
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    simple_logger::init_with_level(log::Level::Warn).unwrap();
+    simple_logger::init_with_level(log::Level::Warn)?;
     lambda!(handler);
     Ok(())
 }

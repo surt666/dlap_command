@@ -12,23 +12,28 @@ pub enum Types {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum Criticality {
-
+    Critical,
+    NonCritical,                         
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum Confidentiality {
+    StrictlyConfidential,
+    Confidential,
+    Internal,
+    Public,
 
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Dataset {
     pub name: String,
-    pub pk: String,
-    pub sk: String,
-    pub gsi1_pk: String,
-    pub gsi1_sk: String,
-    pub r#type: Types,
-    pub created: u64,
+    pub pk: Option<String>,
+    pub sk: Option<String>,
+    pub gsi1_pk: Option<String>,
+    pub gsi1_sk: Option<String>,
+    pub r#type: Option<Types>,
+    pub created: Option<u64>,
     pub cost_center: Option<String>,
     pub owner: String,
     pub criticality: Criticality,
