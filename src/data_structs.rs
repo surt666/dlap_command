@@ -22,7 +22,6 @@ pub enum Confidentiality {
     Confidential,
     Internal,
     Public,
-
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -48,13 +47,12 @@ pub struct Subset {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct User {
     pub name: String,
-    pub pk: String,
-    pub sk: String,
-    pub gsi1_pk: String,
-    pub gsi1_sk: String,
-    pub r#type: Types,
-    pub created: u64,
-
+    pub pk: Option<String>,
+    pub sk: Option<String>,
+    pub gsi1_pk: Option<String>,
+    pub gsi1_sk: Option<String>,
+    pub r#type: Option<Types>,
+    pub created: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

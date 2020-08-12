@@ -129,20 +129,22 @@ async fn handler(e: ApiGatewayV2httpRequest, _c: Context) -> Result<EntityOutput
 	    }
             
         },
-	Actions::CreateUser(mut user) => {
-            user.created = now_as_secs();
-            user.pk = format!("U#{}", user.name);
+	Actions::CreateUser(mut user) => {	    
+            user.created = Some(now_as_secs());
+            user.pk = Some(format!("U#{}", user.name));
             user.sk = user.pk.clone();
-	    user.gsi1_pk = "user".to_string();
+	    user.gsi1_pk = Some("user".to_string());
 	    user.gsi1_sk = user.pk.clone();
-            user.r#type = Types::User;
+            user.r#type = Some(Types::User);
             let item: DdbMap = serde_dynamodb::to_hashmap(&user).unwrap();
 	    let cleaned_item = clean_item(item);
             println!("DDB Item {:#?}", cleaned_item);
             let res = ddb_util::put_item(&client, RELATIONS_TABLE, cleaned_item).await;
             println!("{:#?}", res);
        	    let mut res = HashMap::new();  // MOVE TO generate_lambda_output
-	    res.insert("pk".to_string(), user.pk);
+	    if let Some(x) = user.pk {
+		res.insert("pk".to_string(), x);
+	    };
             Ok(generate_lambda_output(res, 200))
         },
 	// Actions::CreateEdge(pk1, pk2, direction) => {
