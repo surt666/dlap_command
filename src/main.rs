@@ -184,7 +184,7 @@ async fn handler(e: ApiGatewayV2httpRequest, _c: Context) -> Result<EntityOutput
             Ok(generate_lambda_output(res, 200))
         },
 	Actions::CreateEdge(pk1, pk2) => {
-            let mut edge = Edge::new(pk1, pk2);	  
+            let edge = Edge::new(pk1, pk2);	  
 	    let items = generate_edge_items(edge)?;	
             let res = ddb_util::batch_write_items(&client, RELATIONS_TABLE, Some(items), None).await;
             println!("{:#?}", res);
