@@ -1,6 +1,6 @@
 mod data_structs;
 
-use crate::data_structs::{Dataset, User, Profile, Account, Subset, Types};
+use crate::data_structs::{Dataset, User, Profile, Account, Subset, Types, Edge};
 use ddb_util::{batch_write_items, put_item, query, set_kv, DdbMap};
 use itertools::Itertools;
 use lambda_runtime::{error::HandlerError, lambda, Context};
@@ -13,20 +13,15 @@ use simple_logger;
 use std::collections::HashMap;
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
 use aws_lambda_events::event::apigw::ApiGatewayV2httpRequest;
+use log::{self, error};
+use simple_error::bail;
 
 const RELATIONS_TABLE: &str = "dsaccess";
 
 type Name = String;
 type PK = String;
-
-#[derive(Deserialize, Serialize, Debug)]
-enum Direction {
-    LR,
-    RL,
-    BI,
-}
+type UserProfile = String;
 
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -42,7 +37,8 @@ enum Actions {
     CreateAccount(Account),
     DeleteAccount(Name),
     CreateProfile(Profile),
-    CreateEdge(PK, PK, Direction),
+    CreateEdge(PK, PK),
+    CreateProfileEdge(PK, PK, UserProfile)
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -98,6 +94,46 @@ fn clean_item(item: DdbMap) -> DdbMap {
     i
 }
 
+fn generate_edge_item(pk1: String, pk2: String, rel: String, profile: Option<String>) -> DdbMap {
+    let mut ddb_map: DdbMap = DdbMap::new();
+    set_kv(&mut ddb_map, "pk".to_string(), pk1);
+    set_kv(&mut ddb_map, "sk".to_string(), format!("{}#{}", rel, pk2));
+    set_kv(&mut ddb_map, "created".to_string(), now_as_secs().to_string());
+    set_kv(&mut ddb_map, "type".to_string(), Types::Edge.to_string());
+    if let Some(p) = profile {
+	set_kv(&mut ddb_map, "profile".to_string(), format!("P#{}", p));
+    }
+    ddb_map
+}
+
+fn generate_edge_items(edge: Edge) -> Result<Vec<DdbMap>, HandlerError> {
+    match (edge.pk1_type, edge.pk2_type) {
+	(Types::Dataset, Types::User) => {
+	    let ddb1 = generate_edge_item(edge.pk1.clone(), edge.pk2.clone(), "has_member".to_string(), edge.profile.clone());
+	    let ddb2 = generate_edge_item(edge.pk2, edge.pk1, "is_member_of".to_string(), edge.profile);	 
+	    Ok(vec![ddb1, ddb2])
+	},
+	(Types::Dataset, Types::Account) => {
+	    let ddb1 = generate_edge_item(edge.pk1.clone(), edge.pk2.clone(), "has_member".to_string(), edge.profile.clone());
+	    let ddb2 = generate_edge_item(edge.pk2, edge.pk1, "is_member_of".to_string(), edge.profile);	 
+	    Ok(vec![ddb1, ddb2])
+	},
+	(Types::Dataset, Types::Subset) => {
+	    let ddb1 = generate_edge_item(edge.pk1.clone(), edge.pk2.clone(), "has_subset".to_string(), edge.profile);	   	 
+	    Ok(vec![ddb1])
+	},
+	(Types::Dataset, Types::Steward) => {
+	    let ddb1 = generate_edge_item(edge.pk1.clone(), edge.pk2.clone(), "has_steward".to_string(), edge.profile.clone());
+	    let ddb2 = generate_edge_item(edge.pk2, edge.pk1, "is_steward_of".to_string(), edge.profile);	 
+	    Ok(vec![ddb1, ddb2])
+	}
+	_ => {
+	    error!("PK types not comatible with edge");
+            bail!("PK types not comatible with edge");
+	}, 
+    }
+}
+
 #[tokio::main]
 async fn handler(e: ApiGatewayV2httpRequest, _c: Context) -> Result<EntityOutput, HandlerError> {
     println!("E {:#?}", e);
@@ -147,17 +183,25 @@ async fn handler(e: ApiGatewayV2httpRequest, _c: Context) -> Result<EntityOutput
 	    };
             Ok(generate_lambda_output(res, 200))
         },
-	// Actions::CreateEdge(pk1, pk2, direction) => {
-            
-        //     let item: DdbMap = serde_dynamodb::to_hashmap(&ds).unwrap();
-	//     let cleaned_item = clean_item(item);
-        //     println!("DDB Item {:#?}", cleaned_item);
-        //     let res = ddb_util::put_item(&client, RELATIONS_TABLE, cleaned_item).await;
-        //     println!("{:#?}", res);
-       	//     let mut res = HashMap::new();  // MOVE TO generate_lambda_output
-	//     res.insert("status".to_string(), "Edge created");
-        //     Ok(generate_lambda_output(res, 200))
-        // },
+	Actions::CreateEdge(pk1, pk2) => {
+            let mut edge = Edge::new(pk1, pk2);	  
+	    let items = generate_edge_items(edge)?;	
+            let res = ddb_util::batch_write_items(&client, RELATIONS_TABLE, Some(items), None).await;
+            println!("{:#?}", res);
+            let mut res2 = HashMap::new();  // MOVE TO generate_lambda_output
+	    res2.insert("status".to_string(), "Edge created".to_string());
+            Ok(generate_lambda_output(res2, 200))
+        },
+	Actions::CreateProfileEdge(pk1, pk2, profile) => {
+            let mut edge = Edge::new(pk1, pk2);	    
+	    edge.profile = Some(profile);	    
+	    let items = generate_edge_items(edge)?;	
+            let res = ddb_util::batch_write_items(&client, RELATIONS_TABLE, Some(items), None).await;
+            println!("{:#?}", res);
+            let mut res2 = HashMap::new();  // MOVE TO generate_lambda_output
+	    res2.insert("status".to_string(), "Edge created".to_string());
+            Ok(generate_lambda_output(res2, 200))
+        },
 	_ => {
 	    let mut res = HashMap::new();
 	    res.insert("status".to_string(), "Not implemented".to_string());
