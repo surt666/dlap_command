@@ -16,6 +16,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use aws_lambda_events::event::apigw::ApiGatewayV2httpRequest;
 use log::{self, error};
 use simple_error::bail;
+use lazy_static::*;
+
+
+lazy_static! {
+    static ref DYNAMODB: DynamoDbClient = DynamoDbClient::new(Region::default());
+}
 
 const RELATIONS_TABLE: &str = "dsaccess";
 
@@ -137,7 +143,6 @@ fn generate_edge_items(edge: Edge) -> Result<Vec<DdbMap>, HandlerError> {
 #[tokio::main]
 async fn handler(e: ApiGatewayV2httpRequest, _c: Context) -> Result<EntityOutput, HandlerError> {
     println!("E {:#?}", e);
-    let client = DynamoDbClient::new(Region::default());
     let ae: ActionEvent = serde_json::from_str(&e.body.unwrap())?;
     match ae.action {
         Actions::CreateDataset(mut ds) => {
@@ -150,7 +155,7 @@ async fn handler(e: ApiGatewayV2httpRequest, _c: Context) -> Result<EntityOutput
             let item: DdbMap = serde_dynamodb::to_hashmap(&ds).unwrap();
 	    let cleaned_item = clean_item(item);
             println!("DDB Item {:#?}", cleaned_item);
-            let res = ddb_util::put_item(&client, RELATIONS_TABLE, cleaned_item).await;
+            let res = ddb_util::put_item(&DYNAMODB, RELATIONS_TABLE, cleaned_item).await;
             println!("{:#?}", res);
        	    let mut res = HashMap::new();  // MOVE TO generate_lambda_output
 	    match ds.pk {
@@ -175,7 +180,7 @@ async fn handler(e: ApiGatewayV2httpRequest, _c: Context) -> Result<EntityOutput
             let item: DdbMap = serde_dynamodb::to_hashmap(&user).unwrap();
 	    let cleaned_item = clean_item(item);
             println!("DDB Item {:#?}", cleaned_item);
-            let res = ddb_util::put_item(&client, RELATIONS_TABLE, cleaned_item).await;
+            let res = ddb_util::put_item(&DYNAMODB, RELATIONS_TABLE, cleaned_item).await;
             println!("{:#?}", res);
        	    let mut res = HashMap::new();  // MOVE TO generate_lambda_output
 	    if let Some(x) = user.pk {
@@ -186,7 +191,7 @@ async fn handler(e: ApiGatewayV2httpRequest, _c: Context) -> Result<EntityOutput
 	Actions::CreateEdge(pk1, pk2) => {
             let edge = Edge::new(pk1, pk2);	  
 	    let items = generate_edge_items(edge)?;	
-            let res = ddb_util::batch_write_items(&client, RELATIONS_TABLE, Some(items), None).await;
+            let res = ddb_util::batch_write_items(&DYNAMODB, RELATIONS_TABLE, Some(items), None).await;
             println!("{:#?}", res);
             let mut res2 = HashMap::new();  // MOVE TO generate_lambda_output
 	    res2.insert("status".to_string(), "Edge created".to_string());
@@ -196,7 +201,7 @@ async fn handler(e: ApiGatewayV2httpRequest, _c: Context) -> Result<EntityOutput
             let mut edge = Edge::new(pk1, pk2);	    
 	    edge.profile = Some(profile);	    
 	    let items = generate_edge_items(edge)?;	
-            let res = ddb_util::batch_write_items(&client, RELATIONS_TABLE, Some(items), None).await;
+            let res = ddb_util::batch_write_items(&DYNAMODB, RELATIONS_TABLE, Some(items), None).await;
             println!("{:#?}", res);
             let mut res2 = HashMap::new();  // MOVE TO generate_lambda_output
 	    res2.insert("status".to_string(), "Edge created".to_string());

@@ -421,6 +421,7 @@ dependencies = [
  "ddb_util",
  "itertools",
  "lambda_runtime",
+ "lazy_static",
  "log",
  "md5",
  "openssl",
